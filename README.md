@@ -1,9 +1,9 @@
 # GEE-band-value-retrieval-for-shapefiles
 
-These scripts help in retrieving time series band values for both Sentinel 1 and 2 for multi-feature polygon shapefiles. The scripts are in text files. To use the code, the user has to go to https://code.earthengine.google.com/ and paste the script there. The repository also contains a .py file that would reorganize the time series data in a way that each feature gets one row of data. Following are the functions of the scripts. 
+The provided scripts are designed to retrieve time series band values for both Sentinel-1 and Sentinel-2 datasets from multi-feature polygon shapefiles. The scripts are available as text files and can be executed by copying and pasting the code into the Google Earth Engine Code Editor at https://code.earthengine.google.com/. Additionally, the repository includes a Python file that reorganizes the time series data so that each feature is represented by a single row. The primary functionalities of these scripts include:
 
-1. The ROI is a multi-feature polygon shapefile
-2. Can retrieve band values for both Sentinel 1 SAR and Sentinel 2 TOA
-3. Output is numeric values saved in a CSV file
-4. The output CSV file from GEE contains multiple rows for a single feature, each row represents a specific date. For the ease of use for data analysis, it's better to have the data organized in a way that each feature has a single row
-5. The data_organize.py will help in organizing the data accordingly. 
+1. Input Data: Utilizes a multi-feature polygon shapefile as the region of interest (ROI).
+2. Data Retrieval: Extracts band values from both Sentinel-1 Synthetic Aperture Radar (SAR) and Sentinel-2 Top-of-Atmosphere (TOA) datasets.
+3. Output Format: Generates numeric values saved in a CSV file.
+4. Data Organization: Transforms the default output—where multiple rows represent a single feature on different dates—into a format where each feature is consolidated into a single row, facilitating more efficient data analysis.
+5. Data Reorganization Utility: The data_organize.py script automates the reorganization of the CSV output to meet the aforementioned data format requirements.
