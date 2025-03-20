@@ -1,0 +1,83 @@
+// @author: Gunjan Barua
+
+// Load your shapefile asset (replace with your asset ID)
+var plots = ee.FeatureCollection("user_name/assets/shapefile_name");
+
+// Define the time range: January 2016 to December 2017 (Example timeframe, replace with your own)
+var startDate = ee.Date("2016-01-01");
+var endDate = ee.Date("2017-12-31");
+
+// Calculate the number of months between the start and end dates
+var nMonths = ee.Number(endDate.difference(startDate, 'month')).toInt().add(1);
+
+// Create a list of month start dates
+var monthList = ee.List.sequence(0, nMonths.subtract(1)).map(function(monthOffset) {
+  return startDate.advance(monthOffset, 'month');
+});
+
+// Load the Sentinel-2 Harmonized image collection and filter by date and region
+var s2 = ee.ImageCollection("COPERNICUS/S2_HARMONIZED")
+  .filterDate(startDate, endDate)
+  .filterBounds(plots)
+  // Optionally: filter out cloudy images, e.g.,
+  // .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))
+  ;
+
+// Function to compute monthly composites and extract band values per plot
+var monthlyFeatures = monthList.map(function(date) {
+  // Convert the date from the list to an ee.Date
+  var monthStart = ee.Date(date);
+  var monthEnd = monthStart.advance(1, 'month');
+  
+  // Filter images for the current month and create a median composite
+  var monthlyComposite = s2.filterDate(monthStart, monthEnd)
+                           .median()
+                           .select(['B1','B2','B3','B4','B5','B6','B7','B8', 'B8A', 'B9','B10','B11','B12']);
+  
+  // For each plot, reduce the composite image to get the mean band values
+  var plotsWithStats = plots.map(function(feature) {
+    var stats = monthlyComposite.reduceRegion({
+      reducer: ee.Reducer.mean(),
+      geometry: feature.geometry(),
+      scale: 10,       // Sentinel-2 resolution (adjust if needed)
+      maxPixels: 1e9
+    });
+    
+    // Set the properties for the feature:
+    // - 'plot_ID' from the original feature, or provide your identifier variable
+    // - 'date' for the current month (formatted as YYYY-MM-dd)
+    // - Mean values for bands B1 to B12
+    return feature.set({
+      'plot_ID': feature.get('plot_ID'),
+      'date': monthStart.format('YYYY-MM-dd'),
+      'B1': stats.get('B1'),
+      'B2': stats.get('B2'),
+      'B3': stats.get('B3'),
+      'B4': stats.get('B4'),
+      'B5': stats.get('B5'),
+      'B6': stats.get('B6'),
+      'B7': stats.get('B7'),
+      'B8': stats.get('B8'),
+      'B8A': stats.get('B8A'),
+      'B9': stats.get('B9'),
+      'B10': stats.get('B10'),
+      'B11': stats.get('B11'),
+      'B12': stats.get('B12')
+    });
+  });
+  
+  // Return the feature collection for the current month
+  return plotsWithStats;
+});
+
+// Flatten the list of feature collections into a single feature collection
+var allFeatures = ee.FeatureCollection(monthlyFeatures).flatten();
+
+// Export the final feature collection as a CSV file to your Google Drive
+Export.table.toDrive({
+  collection: allFeatures,
+  description: 's2_monthly_band_values',
+  folder: 'gee',  // provide your folder name          
+  fileNamePrefix: 's2_monthly_band_values',
+  fileFormat: 'CSV'
+});

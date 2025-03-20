@@ -1,0 +1,87 @@
+// @author: Gunjan Barua
+
+// Load your shapefile asset (replace with your asset ID)
+var plots = ee.FeatureCollection("user_name/assets/shapefile_name");
+
+// Define the time range: January 2016 to December 2017 (Example timeframe, replace with your own)
+var startDate = ee.Date("2016-01-01");
+var endDate = ee.Date("2017-12-31");
+
+// Calculate the number of months in the period
+var nMonths = ee.Number(endDate.difference(startDate, 'month')).toInt().add(1);
+
+// Create a list of month start dates
+var monthList = ee.List.sequence(0, nMonths.subtract(1)).map(function(monthOffset) {
+  return startDate.advance(monthOffset, 'month');
+});
+
+// Load the Sentinel-1 GRD image collection and filter by date, region, and polarisation.
+// This filter ensures that only images containing VV and VH bands are included.
+var s1 = ee.ImageCollection("COPERNICUS/S1_GRD")
+  .filterDate(startDate, endDate)
+  .filterBounds(plots)
+  .filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VV'))
+  .filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VH'));
+
+// Function to compute monthly composites and extract band values per feature
+var monthlyFeatures = monthList.map(function(date) {
+  // Convert the list element to an ee.Date object
+  var monthStart = ee.Date(date);
+  var monthEnd = monthStart.advance(1, 'month');
+  
+  // Create a median composite for the current month
+  var monthlyComposite = s1.filterDate(monthStart, monthEnd)
+                           .median();
+  
+  // Calculate gamma_nought values using the provided functions
+  // Convert 'angle' from degrees to radians
+  var theta_iRad = monthlyComposite.select('angle').multiply(Math.PI / 180);
+  // Compute gamma_nought for VV and VH bands
+  var gamma0VV = monthlyComposite.select('VV').divide(theta_iRad.cos()).rename('gamma_nought_VV');
+  var gamma0VH = monthlyComposite.select('VH').divide(theta_iRad.cos()).rename('gamma_nought_VH');
+  // Convert gamma_nought to decibel (dB) values
+  var gamma0dBVV = gamma0VV.log10().multiply(10).rename('gamma_noughtdb_VV');
+  var gamma0dBVH = gamma0VH.log10().multiply(10).rename('gamma_noughtdb_VH');
+  
+  // Create a composite image including the bands of interest:
+  // VV, VH, gamma_nought_VV, gamma_nought_VH, gamma_noughtdb_VV, gamma_noughtdb_VH
+  var compositeOut = monthlyComposite.select(['VV', 'VH'])
+                                     .addBands([gamma0VV, gamma0VH, gamma0dBVV, gamma0dBVH]);
+  
+  // For each plot, reduce the composite image to get the mean band values
+  var plotsWithStats = plots.map(function(feature) {
+    var stats = compositeOut.reduceRegion({
+      reducer: ee.Reducer.mean(),
+      geometry: feature.geometry(),
+      scale: 10,       // Sentinel-1 GRD has ~10m resolution
+      maxPixels: 1e9
+    });
+    
+    // Attach the plot_ID, date, and extracted band values to the feature. Replace plot_ID with the name of your identifier variable
+    return feature.set({
+      'plot_ID': feature.get('plot_ID'),
+      'date': monthStart.format('YYYY-MM-dd'),
+      'VV': stats.get('VV'),
+      'VH': stats.get('VH'),
+      'gamma_nought_VV': stats.get('gamma_nought_VV'),
+      'gamma_nought_VH': stats.get('gamma_nought_VH'),
+      'gamma_noughtdb_VV': stats.get('gamma_noughtdb_VV'),
+      'gamma_noughtdb_VH': stats.get('gamma_noughtdb_VH')
+    });
+  });
+  
+  // Return the feature collection for the current month
+  return plotsWithStats;
+});
+
+// Flatten the list of feature collections into a single feature collection
+var allFeatures = ee.FeatureCollection(monthlyFeatures).flatten();
+
+// Export the feature collection as a CSV file to Google Drive
+Export.table.toDrive({
+  collection: allFeatures,
+  description: 'S1_Monthly_Band_Values',
+  folder: 'gee',  // provide your folder name            
+  fileNamePrefix: 'S1_Monthly_Band_Values',
+  fileFormat: 'CSV'
+});
